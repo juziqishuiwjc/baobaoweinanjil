@@ -1,0 +1,25 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// 一次喂奶记录
+model FeedingRecord {
+  /// 主键，cuid
+  id        String   @id @default(cuid())
+  /// 奶量，单位毫升(ml)
+  amount    Int
+  /// 喂奶发生的时间
+  time      DateTime @default(now())
+  /// 记录创建时间
+  createdAt DateTime @default(now())
+}

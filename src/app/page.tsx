@@ -1,69 +1,93 @@
-import Image from "next/image";
+import { getRecentRecords } from "@/actions/feeding";
+import FeedingTimer from "@/components/FeedingTimer";
+import FeedingForm from "@/components/FeedingForm";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-export default function Home() {
+/**
+ * 把喂奶时间格式化为友好展示：
+ * - 今天 → "今天 14:30"
+ * - 昨天 → "昨天 14:30"
+ * - 更早 → "M月D日 14:30"
+ */
+function formatFeedTime(date: Date): string {
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfThat = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+  const diffDays = Math.round((startOfToday - startOfThat) / 86_400_000);
+
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+
+  if (diffDays === 0) return `今天 ${hh}:${mm}`;
+  if (diffDays === 1) return `昨天 ${hh}:${mm}`;
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${hh}:${mm}`;
+}
+
+export default async function Home() {
+  const records = await getRecentRecords();
+  const latestRecord = records[0] ?? null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="flex min-h-screen w-full justify-center bg-muted/40">
+      {/* 手机壳容器：移动端铺满；桌面端居中、max-w-md、圆角 + 软阴影 */}
+      <div className="flex w-full max-w-md flex-col gap-6 bg-background px-5 py-8 shadow-lg shadow-primary/5 ring-1 ring-black/5 sm:my-4 sm:min-h-[calc(100vh-2rem)] sm:rounded-2xl">
+        {/* Header */}
+        <header className="flex flex-col items-center gap-1 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">书熠的喂奶记录</h1>
+          <p className="text-sm text-muted-foreground">配方奶 · 约每 2 小时一次</p>
+        </header>
+
+        {/* 倒计时表盘 */}
+        <FeedingTimer lastFeedTime={latestRecord?.time ?? null} />
+
+        {/* 快速记录 */}
+        <FeedingForm />
+
+        {/* 历史记录 */}
+        <section className="flex flex-col gap-3">
+          {records.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                还没有记录，喂第一次奶后会显示在这里
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>历史记录</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col divide-y divide-border">
+                {records.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                  >
+                    <span className="text-sm text-foreground/90">
+                      {formatFeedTime(record.time)}
+                    </span>
+                    <span className="text-sm font-semibold text-primary">
+                      {record.amount} ml
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }
