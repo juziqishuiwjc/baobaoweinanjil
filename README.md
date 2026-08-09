@@ -2,18 +2,19 @@
 
 > 为记录新生儿喂奶时间而开发的**轻量级、移动端优先** Web 应用。一键记录配方奶奶量，自动倒计时提醒下一次喂奶，历史记录一目了然，方便全家人同步查看。
 
-宝宝：**王书熠**（2026-06-13 出生）。配方奶喂养，约每 2 小时一次。
+宝宝：**王书熠**（2026-06-13 出生）。配方奶喂养，默认约每 2 小时一次（间隔可调）。
 
 ---
 
-## ✨ 核心功能（MVP）
+## ✨ 核心功能
 
 | 功能 | 说明 |
 |------|------|
-| ⏱ **倒计时表盘** | 首页醒目展示「距上次喂奶已过去 X小时X分X秒」与「距下次喂奶剩余 X 分钟」；超过 2 小时周期自动变红警示。每秒自动刷新。 |
-| 🍼 **一键记录奶量** | 输入奶量（ml），点「记录本次喂奶」即可保存；提交时有 loading 态防重复点击，成功后自动清空。 |
-| 📜 **历史记录** | 按时间倒序展示最近 50 条记录，时间友好显示（「今天 14:30」「昨天」），奶量用主题色高亮。 |
-| 📱 **移动端优先** | `max-w-md` 居中「手机壳」布局，桌面端两侧留白，手机端铺满。 |
+| ⏱ **倒计时表盘** | 醒目展示「距上次喂奶已过去 X小时X分X秒」与「距下次喂奶剩余 X 分钟」；超时自动变红警示，每秒刷新。**喂奶间隔可在 1 / 1.5 / 2 / 2.5 / 3 小时间切换，选择自动记忆（localStorage）。** |
+| 🍼 **一键记录奶量** | 输入奶量（ml）点「记录本次喂奶」即保存；**奶量可不填**（仅记录时间）；提交有 loading 态防重复，成功后清空。 |
+| 📜 **历史记录** | 按时间倒序展示最近 50 条，时间友好显示（「今天 14:30」「昨天」）；未填奶量的记录显示「未记录奶量」。 |
+| 👶 **宝宝头像** | 首页 Header 圆形头像；把照片命名为 `avatar.jpg` 放进 `public/` 即可替换。 |
+| 📱 **移动端优先** | `max-w-md` 居中「手机壳」布局，桌面端两侧留白，移动端铺满。 |
 | 🎨 **柔和视觉** | 柔和蓝色主色调（oklch hue 250），圆角卡片，适合母婴场景。 |
 
 > 数据无需登录，存储在本地 SQLite 数据库（单文件 `dev.db`）。
@@ -40,21 +41,24 @@
 ```
 baby-feeding-tracker/
 ├── prisma/
-│   └── schema.prisma              # 数据模型：FeedingRecord（id/amount/time/createdAt）
+│   └── schema.prisma              # 数据模型：FeedingRecord（id / amount? / time / createdAt）
 ├── prisma.config.ts               # Prisma 7 配置（datasource url 从 .env 读取）
+├── public/
+│   └── avatar.jpg                 # 宝宝头像（替换此文件即可换图）
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx             # 全局布局（标题「书熠的喂奶记录」、字体、lang=zh-CN）
-│   │   ├── page.tsx               # 首页（Server Component，组装表盘+表单+历史）
+│   │   ├── page.tsx               # 首页（Server Component，组装头像+表盘+表单+历史）
 │   │   └── globals.css            # Tailwind v4 主题 token（柔和蓝主色）
 │   ├── components/
-│   │   ├── FeedingTimer.tsx       # 客户端组件：倒计时表盘（hydration 安全）
-│   │   ├── FeedingForm.tsx        # 客户端组件：记录表单（useTransition + loading）
+│   │   ├── FeedingTimer.tsx       # 客户端组件：倒计时表盘 + 间隔选择器（hydration 安全 + localStorage）
+│   │   ├── FeedingForm.tsx        # 客户端组件：记录表单（奶量可选，useTransition + loading）
 │   │   └── ui/                    # shadcn 组件（button / card / input / dialog）
 │   ├── actions/
-│   │   └── feeding.ts             # Server Actions：addFeedingRecord / getRecentRecords
+│   │   └── feeding.ts             # Server Actions：addFeedingRecord(amount?) / getRecentRecords
 │   ├── lib/
-│   │   └── prisma.ts              # Prisma 客户端单例（driver adapter）
+│   │   ├── prisma.ts              # Prisma 客户端单例（driver adapter）
+│   │   └── utils.ts               # cn() 类名合并工具
 │   └── generated/prisma/          # ⚙ Prisma 自动生成（.gitignore，勿手改）
 ├── .env.example                   # 环境变量模板
 ├── next.config.ts                 # Next.js 配置
@@ -67,7 +71,7 @@ baby-feeding-tracker/
 
 ## 🚀 本地开发
 
-> 前置：Node.js **20+**（Next 16 要求）。
+> 前置：Node.js **>= 22.x**（生产实测 `v22.14.0`）。**不要装 Node 20.x**——Prisma 7 + `better-sqlite3` 在 Node 20 下会触发 `EBADENGINE` 与 C++ 编译失败。
 
 ```bash
 # 1. 安装依赖
@@ -77,7 +81,7 @@ npm install                # postinstall 会自动生成 Prisma 客户端
 npx prisma db push
 
 # 3. 启动开发服务器
-npm run dev                # 打开 http://localhost:3000
+npm run dev                # 打开 http://localhost:3000（本地 dev 默认端口）
 ```
 
 其他常用命令：
@@ -85,16 +89,48 @@ npm run dev                # 打开 http://localhost:3000
 ```bash
 npm run build              # 生产构建（= prisma generate && next build）
 npm run start              # 以生产模式启动（需先 build）
+npm run start -- -p 3030   # 生产环境推荐：监听 3030 端口（详见下方「生产部署」）
+npm run pack               # 📦 一键打包 → 生成 deploy.zip（详见下方「打包与部署」）
 npm run lint               # ESLint 检查
 ```
 
 ---
 
-## 📦 生产部署
+## 🎨 自定义
 
-本项目部署到 Linux 服务器（宝塔面板 + PM2 + Nginx）。
+- **换宝宝头像**：把照片重命名为 `avatar.jpg`（小写、`.jpg`），覆盖 `public/avatar.jpg` 即可（建议正方形）。生产模式换图后需清 `.next/cache/images/` 或重启服务，再浏览器硬刷新（`Ctrl+F5`）。
+- **改喂奶间隔**：直接点首页表盘下方的按钮切换（1~3 小时），选择会自动记住（localStorage），无需改代码。
 
-> ⚠️ **关键**：数据库驱动 `better-sqlite3` 是原生模块，**必须在目标服务器上重新编译**——不能直接把 Windows 的 `node_modules` 传上去。完整步骤见 👉 **[BT_DEPLOY.md](BT_DEPLOY.md)**。
+---
+
+## 📦 打包与生产部署
+
+### 一键打包 → `deploy.zip`
+
+```bash
+npm run pack
+```
+
+脚本（[scripts/pack.mjs](scripts/pack.mjs)）会刷新 `baby-feeding-tracker-deploy/` 目录并打包为 `deploy.zip`（同时镜像一份 `baby-feeding-tracker-deploy.zip`），**严格排除**：
+
+- `node_modules/`、`/.next/`、`/.git/`、`/src/generated/prisma/`、`*.tsbuildinfo`
+- `/dev.db`、`*.db`、`*.db-journal`（线上数据库文件，绝对不能覆盖）
+- `/.claude/`、`/.agents/`、`/.windsurf/`、`skills-lock.json`（AI 工具本地配置）
+
+> ⚠️ **关键约束**：数据库驱动 `better-sqlite3` 是原生模块，**必须在目标服务器上重新编译**——不能直接把 Windows 的 `node_modules` 传上去。打包 zip 也不应包含 `node_modules`，让服务器重新 `npm install` 现场编译。
+
+### 生产部署（Linux 宝塔面板 · 实测配置）
+
+| 关键项 | 生产实测值 | 备注 |
+|--------|----------|------|
+| **Node.js** | **>= 22.0.0**（实测 v22.14.0） | Node 20.x 会触发 `EBADENGINE`，不要用 |
+| **端口** | **3030** | 启动命令：`npm run start -- -p 3030` |
+| **运行用户** | **`root`** | 非 root 会因 `dev.db` 权限触发 500（详见 BT_DEPLOY.md Q6） |
+| **进程管理** | 宝塔「Node 项目」管理器 | 自动 PM2 + 自动域名绑定 + 一键 HTTPS |
+
+> ✅ **最简部署路线（实测）**：在宝塔「Node 项目」里添加本项目 → 启动命令填 `npm run start -- -p 3030` → 同页面绑定域名 → 一键申请 Let's Encrypt 证书 → **完事**。不需要手写 Nginx 反代，不需要单独建 PHP 站点。
+>
+> 完整排障与逐步操作：[BT_DEPLOY.md](BT_DEPLOY.md)
 
 ---
 
@@ -109,7 +145,7 @@ npm run lint               # ESLint 检查
 
 ## 📌 未来路线图
 
-> 详见 [AGENTS.md](AGENTS.md) 的 `[Future Roadmap]` 板块。当前 MVP 已完成，待办包括：奶量统计图表、修改/删除记录、PWA 离线、家庭成员多端实时同步等。
+> 详见 [AGENTS.md](AGENTS.md) 的 `[Future Roadmap]` 板块。待办包括：奶量统计图表、修改/删除记录、PWA 离线、家庭成员多端实时同步等。
 
 ---
 
