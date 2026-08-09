@@ -234,9 +234,55 @@ A：本项目（Prisma 7 + better-sqlite3）对数据库文件的读写权限非
 
 > ✅ **解决办法**：在「Node 项目」项目设置里把**运行用户改为 `root`**（生产实测生效），或在终端把 `dev.db` 及其目录 `chmod 777` / `chown www:www`。**强烈建议直接切 root**——一行配置，省心。
 
----
+**Q7（高发 · 提交任何表单都 500）：日志报 `x-forwarded-host ... does not match origin ...`**
+A：Next.js 16 默认启用 CSRF/Origin 校验。宝塔 Nginx 反代 HTTPS 请求时会把 `Host: wangshuyi.wangjicheng.com:443` 透传到 Node 进程，而浏览器发起的 `Origin` 头是 `https://wangshuyi.wangjicheng.com`（HTTPS 隐式端口 443 不出现），两者不一致 → Next 拒绝 Server Actions。
 
-> 部署成功后，建议把服务器的 `dev.db` 定期备份（宝塔有「计划任务」可自动备份某个目录）。
+> ✅ **解决办法**（已配置）：在 `next.config.ts` 的 `experimental.serverActions.allowedOrigins` 中加入「带端口 + 不带端口」两种域名：
+>
+> ```ts
+> experimental: {
+>   serverActions: {
+>     allowedOrigins: [
+>       "wangshuyi.wangjicheng.com",
+>       "wangshuyi.wangjicheng.com:443",
+>     ],
+>   },
+> }
+> ```
+>
+> 改完后必须 `npm run build` + `pm2 restart baby-feeding-tracker` 才生效。**红线**：以后重构 `next.config.ts` / `experimental` 时**绝对不要删除或覆盖**这段配置；如需新增域名，**追加**到数组末尾即可。
+
+**Q6.5（Q6 修完后还是 500）：日志是 `EACCES: ... dev.db-journal`**
+A：仅把项目设置改 root 还不够。SQLite 在写库时会**动态创建** `dev.db-journal` 锁文件，并继承当前进程 umask —— 经常出现「进程是 root 启动，但锁文件被另一个用户先建出来导致权限不足」的二级错误。
+
+> ✅ **解决办法**（生产实测兜底）：
+>
+> ```bash
+> cd /www/wwwroot/baby-feeding-tracker
+> chmod -R 777 .
+> pm2 restart baby-feeding-tracker
+> ```
+>
+> `chmod -R 777 .` 对项目根目录递归放开，确保 `dev.db` 和 `dev.db-journal` 任何时刻都可写。重新部署后**建议每次都跑一次**作为兜底。
+
+**Q8：增量更新打包时，怎么保证数据库不丢？**
+A：`npm run pack` 脚本（`scripts/pack.mjs`）的 `EXCLUDE_FILES` 已严格排除 `dev.db` / `dev.db-journal` / `.env`，生成的 zip 里**完全没有**数据库文件和真实环境变量。增量部署流程：
+
+```bash
+cd /www/wwwroot/baby-feeding-tracker
+# 1) 上传新的 baobaoweinaiji/deploy.zip
+# 2) 解压（zip 里没有 dev.db，所以数据库不会被覆盖）
+unzip -o deploy.zip
+# 3) 重新构建（让 next.config.ts / 新代码生效）
+npm run build
+# 4) 重启进程
+pm2 restart baby-feeding-tracker
+```
+
+> **绝对禁止**：
+> - `rm dev.db` 后再 `unzip`（除非你明确想清空数据）；
+> - `scp` 把本地 `dev.db` 覆盖线上；
+> - 修改 `scripts/pack.mjs` 的 `EXCLUDE_FILES` 把 `dev.db` 移除。
 
 ---
 

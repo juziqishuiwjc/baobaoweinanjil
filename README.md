@@ -12,6 +12,8 @@
 |------|------|
 | ⏱ **倒计时表盘** | 醒目展示「距上次喂奶已过去 X小时X分X秒」与「距下次喂奶剩余 X 分钟」；超时自动变红警示，每秒刷新。**喂奶间隔可在 1 / 1.5 / 2 / 2.5 / 3 小时间切换，选择自动记忆（localStorage）。** |
 | 🍼 **一键记录奶量** | 输入奶量（ml）点「记录本次喂奶」即保存；**奶量可不填**（仅记录时间）；提交有 loading 态防重复，成功后清空。 |
+| ✏️ **补记之前喂奶** | 表单下方「补记之前喂奶」按钮，弹 Dialog 选择历史时间（默认 1 小时前，可手动调整到任意过去时间，但不能晚于现在）；可选同时填奶量。 |
+| 🔔 **浏览器通知** | 倒计时归零时弹系统通知「喂奶时间到了！书熠宝宝该喝奶啦~」；首次进入页面主动请求一次权限，右上角徽标可手动再次触发；被拒绝后显示「通知被禁用」。 |
 | 📜 **历史记录** | 按时间倒序展示最近 50 条，时间友好显示（「今天 14:30」「昨天」）；未填奶量的记录显示「未记录奶量」。 |
 | 👶 **宝宝头像** | 首页 Header 圆形头像；把照片命名为 `avatar.jpg` 放进 `public/` 即可替换。 |
 | 📱 **移动端优先** | `max-w-md` 居中「手机壳」布局，桌面端两侧留白，移动端铺满。 |
@@ -90,7 +92,7 @@ npm run dev                # 打开 http://localhost:3000（本地 dev 默认端
 npm run build              # 生产构建（= prisma generate && next build）
 npm run start              # 以生产模式启动（需先 build）
 npm run start -- -p 3030   # 生产环境推荐：监听 3030 端口（详见下方「生产部署」）
-npm run pack               # 📦 一键打包 → 生成 deploy.zip（详见下方「打包与部署」）
+npm run pack               # 📦 一键打包 → 生成 baobaoweinaiji/deploy.zip（详见下方「打包与部署」）
 npm run lint               # ESLint 检查
 ```
 
@@ -105,13 +107,13 @@ npm run lint               # ESLint 检查
 
 ## 📦 打包与生产部署
 
-### 一键打包 → `deploy.zip`
+### 一键打包 → `baobaoweinaiji/deploy.zip`
 
 ```bash
 npm run pack
 ```
 
-脚本（[scripts/pack.mjs](scripts/pack.mjs)）会刷新 `baby-feeding-tracker-deploy/` 目录并打包为 `deploy.zip`（同时镜像一份 `baby-feeding-tracker-deploy.zip`），**严格排除**：
+脚本（[scripts/pack.mjs](scripts/pack.mjs)）会把项目拷贝到**系统临时目录**的 staging 文件夹（不污染项目目录），再打成 `deploy.zip` 输出到**项目父目录**（`baobaoweinaiji/deploy.zip`）。打包结束后 staging 自动清理。**严格排除**：
 
 - `node_modules/`、`/.next/`、`/.git/`、`/src/generated/prisma/`、`*.tsbuildinfo`
 - `/dev.db`、`*.db`、`*.db-journal`（线上数据库文件，绝对不能覆盖）

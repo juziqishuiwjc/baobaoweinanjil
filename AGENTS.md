@@ -23,7 +23,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   1. **倒计时表盘**（基于「上次喂奶时间 + 间隔小时数」实时计算下次喂奶时间）；
   2. **动态时间间隔**（用户在首页表盘 1 / 1.5 / 2 / 2.5 / 3 小时自由切换，持久化到 `localStorage`）；
   3. **可选奶量录入**（首页「记录」表单中奶量为非必填，可仅记时间不记奶量）；
-  4. **历史记录列表**（按时间倒序展示最近 50 条）。
+  4. **补记之前喂奶**（首页表单下方的次级入口 `补记之前喂奶` 按钮，弹 Dialog 选择历史时间 `datetime-local`，可同时补奶量；时间不能晚于现在）；
+  5. **浏览器通知提醒**（倒计时归零时调 Web Notifications API 弹系统通知；首次进入页面主动请求一次权限；同一周期内通过 `useRef` 去重，新一轮喂奶自动重置）；
+  6. **历史记录列表**（按时间倒序展示最近 50 条）。
 - **数据库**：**SQLite 单文件数据库**（`dev.db`，位于项目根）。通过 **Prisma 7 + driver adapter**（`@prisma/adapter-better-sqlite3`）访问。当前唯一数据模型 `FeedingRecord`（`id` / `amount?` / `time` / `createdAt`），其中 `amount` 可为空（仅记录时间、不记录奶量）。
 - **前端布局**：严格 **Mobile-First 居中布局**——所有页面外层使用 `max-w-md mx-auto`「手机壳」容器，桌面端两侧留白，移动端铺满。**新增页面/组件必须沿用此布局约定**。
 - **视觉基调**：柔和蓝色主色调（oklch hue 250），圆角卡片，母婴场景的温和观感。
@@ -46,12 +48,31 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
    - `build` 脚本已含 `prisma generate`，`postinstall` 也会自动生成客户端。
 7. **禁止 Google Fonts 外链**（大陆被墙）：字体通过 `next/font`（Geist）加载，CSS 变量 `--font-sans`。
 8. **Next.js 16 有破坏性变更**：修改 `layout.tsx` / `page.tsx` / 路由相关代码前，**先读 `node_modules/next/dist/docs/`** 对应文档（`params`/`searchParams` 已是 Promise，类型化路由签名如 `LayoutProps<'/'>`）。
-9. **生产部署底线（已上线实测）**：以下为真实服务器配置，**任何重装/迁移/重部署都必须沿用**：
-   - **Node.js >= 22.0.0**（实测 `v22.14.0`）。Node 20.x 在 `npm install` 时会触发 `EBADENGINE` + C++ 编译失败，Node 18 直接启动报错。**本地测试与生产构建前务必先确认 Node 版本**：`node -v` 必须 >= `v22.0.0`。
-   - **端口 = 3030**（生产已改为 3030 避开常见冲突，启动命令：`npm run start -- -p 3030`）。
-   - **宝塔「Node 项目」管理器**（不是裸 PM2 + 手写 Nginx 反代）—— 它自动创建 PM2 进程 + 自动绑定域名 + 一键申请 HTTPS。
-   - **运行用户 = root**（在项目设置里改）：非 root 用户会因 `dev.db` 文件权限触发 `Permission Denied` / 500。
-   - 详细排障与部署步骤见 [BT_DEPLOY.md](BT_DEPLOY.md)；打包流程 `npm run pack` 见 [README.md](README.md)。
+9. **生产部署底线（已上线实测 · 5 条红线）**：以下为真实服务器配置，**任何重装/迁移/重部署都必须严格沿用**，缺一不可：
+
+   9.1 **Node.js >= 22.14.0**（实测 `v22.14.0`）。Node 20.x 在 `npm install` 时会触发 `EBADENGINE` + `better-sqlite3` 的 C++ 原生模块编译失败；Node 18 直接启动报错。**本地测试与生产构建前务必先确认 Node 版本**：`node -v` 必须 >= `v22.14.0`。
+
+   9.2 **端口 = 3030**，启动命令：`npm run start -- -p 3030`。生产已改 3030 避开 3000 常见冲突。修改此端口会导致宝塔 Nginx 反代 502。
+
+   9.3 **运行用户 = `root`**（在宝塔「Node 项目 → 设置」里改）。非 root 用户（默认 `www`）会因 `dev.db` 文件权限触发 `Permission Denied` / **`EACCES: ... dev.db-journal`** 500 报错。**真实生产踩坑**：仅把项目设置改 root 还不够——SQLite 在写库时会动态创建 `dev.db-journal` 锁文件并继承当前进程的 umask，经常出现「root 启动但锁文件权限不足」的二级错误。**额外需要对项目根目录执行 `chmod -R 777 .`**（或 `chown -R root:root .`）作为兜底，确保 `dev.db` 和 `dev.db-journal` 都可写。
+
+   9.4 **Server Actions 来源白名单**：`next.config.ts` 中 `experimental.serverActions.allowedOrigins`。宝塔 Nginx 反代 HTTPS 请求时会把 `Host: wangshuyi.wangjicheng.com:443` 透传，而浏览器发起的 `Origin` 头是 `https://wangshuyi.wangjicheng.com`（无端口，443 是 HTTPS 隐式端口），两者不一致会触发 Next.js 16 CSRF/Origin 校验拒绝所有 Server Actions 请求，**报错关键词：``x-forwarded-host ... does not match origin ...``**。**绝对禁止**在重构 `next.config.ts` / `experimental` 时**删除或覆盖**以下两个域名：
+      - `wangshuyi.wangjicheng.com`
+      - `wangshuyi.wangjicheng.com:443`
+      如需新增域名（如迁移到新域），**追加**到 `allowedOrigins` 数组，不要替换整段配置。
+
+   9.5 **数据库保护**：`npm run pack` 严格排除 `dev.db` / `dev.db-journal`（见 `scripts/pack.mjs` 的 `EXCLUDE_FILES`）。增量部署流程：上传 `baobaoweinaiji/deploy.zip` → 解压 → `npm run build` → 重启 PM2，**绝不**手动 `rm dev.db`、**绝不**用 scp 把本地 `dev.db` 覆盖线上数据库。详细排障与部署步骤见 [BT_DEPLOY.md](BT_DEPLOY.md)；打包流程见 [README.md](README.md)。
+
+## [Production Gotchas · 排障速查]
+
+> 上线后真实踩过的两类 500 报错。看到对应关键字时**直接按本表定位**。
+
+| 报错关键词（看日志） | 根因 | 修复（按顺序执行） |
+|---------------------|------|--------------------|
+| **`EACCES: ... dev.db-journal`** / **`SQLITE_READONLY`** / `Permission Denied` | 进程用户对 `dev.db` 或 `dev.db-journal` 无写权限（宝塔默认 `www` 用户） | 1) 宝塔「Node 项目 → 设置」把**运行用户改为 `root`**；2) **额外**执行 `cd /www/wwwroot/baby-feeding-tracker && chmod -R 777 .`；3) `pm2 restart baby-feeding-tracker` |
+| **`x-forwarded-host ... does not match origin ...`** | 宝塔 Nginx 反代把 `Host` 带 `:443` 透传，但浏览器 `Origin` 不带端口，触发 Next.js 16 CSRF 校验 | 在 `next.config.ts` 的 `experimental.serverActions.allowedOrigins` 中**追加**对应域名（带端口 + 不带端口两种形式都要）→ `npm run build` → 重启进程 |
+
+> 改完配置必须**重启 PM2 进程**才生效（生产模式只读一次配置）；光刷新浏览器没用。
 
 ## [Future Roadmap]
 
@@ -63,5 +84,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - [ ] **Todo**：历史记录按天分组的时间轴展示（当前为平铺倒序列表）
 - [ ] **Todo**：PWA 离线支持 + 添加到主屏幕（manifest + service worker）
 - [ ] **Todo**：家庭成员多端**实时同步**（需引入登录/账号体系，从 SQLite 迁移到 Postgres）
-- [ ] **Todo**：喂奶时间到点提醒（浏览器通知 / 推送）
 - [ ] **Todo**：单条记录备注（如吐奶、拍嗝、大便情况等观察项）
