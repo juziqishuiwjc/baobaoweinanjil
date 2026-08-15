@@ -110,7 +110,7 @@ npm run build
 npx prisma db push
 ```
 
-这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好「喂奶记录」表。
+这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好所有数据表（喂奶记录 `FeedingRecord` + 换尿布记录 `DiaperRecord`）。
 
 > 执行完后用 `ls -l dev.db` 应能看到这个文件，说明数据库就绪了。
 >
@@ -207,6 +207,7 @@ curl http://127.0.0.1:3030
 |------|------|
 | 看实时日志（排查 500/崩溃） | 终端 `pm2 logs baby-feeding-tracker` |
 | 改了代码要更新 | 上传新源码 → `cd 项目目录 && npm install && npm run build && pm2 restart baby-feeding-tracker` |
+| 改了 `schema.prisma` 要更新 | 解压新源码后：**先 `npx prisma db push` 再 `npm run build`** → `pm2 restart baby-feeding-tracker`（见 Q9 红线） |
 | 备份数据库 | 定期复制 `/www/wwwroot/baby-feeding-tracker/dev.db` 到别处（SQLite 就是一个文件） |
 | 重启程序 | `pm2 restart baby-feeding-tracker` |
 
@@ -273,11 +274,25 @@ cd /www/wwwroot/baby-feeding-tracker
 # 1) 上传新的 baobaoweinaiji/deploy.zip
 # 2) 解压（zip 里没有 dev.db，所以数据库不会被覆盖）
 unzip -o deploy.zip
-# 3) 重新构建（让 next.config.ts / 新代码生效）
+# 3) 🚨 仅当本次更新修改了 prisma/schema.prisma 时执行（见下方 Q9 红线）
+# npx prisma db push
+# 4) 重新构建（让 next.config.ts / 新代码生效）
 npm run build
-# 4) 重启进程
+# 5) 重启进程
 pm2 restart baby-feeding-tracker
 ```
+
+**Q9（🚨 数据库结构变更红线 · 2026-08-15 换尿布功能实测）：本次更新改了 `prisma/schema.prisma`（新增表/字段），部署后需要做什么？**
+A：**必须在服务器解压源码后、执行 `npm run build` 之前，先执行一次：**
+
+```bash
+cd /www/wwwroot/baby-feeding-tracker
+npx prisma db push
+```
+
+- **为什么**：`prisma db push` 会把线上 `dev.db` 的表结构**增量对齐**到最新 schema（例如为换尿布功能新建 `DiaperRecord` 表），**原有数据（喂奶记录等）一条都不会丢**。
+- **跳过的后果**：不执行就直接 build + 重启，页面能打开，但一访问新功能就报 **`no such table: DiaperRecord`** 500 错误。
+- **绝对禁止**：不要用 `rm dev.db` 删库重建的方式来「同步结构」——那会清空全部线上记录。结构同步只能走 `npx prisma db push`。
 
 > **绝对禁止**：
 > - `rm dev.db` 后再 `unzip`（除非你明确想清空数据）；

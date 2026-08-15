@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * 一键打包脚本：把当前项目刷新到 `baby-feeding-tracker-deploy/` 目录，
- * 再打包成 `deploy.zip`（同时镜像一份 `baby-feeding-tracker-deploy.zip`），
- * 用于上传到服务器解压部署。
+ * 一键打包脚本：把当前项目拷贝到系统临时目录中的 staging 文件夹，
+ * 打包成 deploy.zip，输出到项目父目录（baobaoweinaiji/deploy.zip）。
  *
  * 严格排除（不能进 zip）：
  *   - node_modules、.next、.git、.claude/.agents/.windsurf
@@ -10,7 +9,7 @@
  *   - src/generated/prisma（构建时 prisma generate 重新生成）
  *   - *.tsbuildinfo、next-env.d.ts
  *   - skills-lock.json
- *   - 本脚本与上次的 deploy.zip/deploy 目录本身
+ *   - 本脚本本身
  *
  * 跨平台：
  *   - Windows: PowerShell Compress-Archive
@@ -20,20 +19,24 @@
  *   npm run pack
  */
 
-import { existsSync, rmSync, mkdirSync, cpSync, readdirSync, statSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, rmSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import { execFileSync, execSync } from 'node:child_process';
-import { join, relative, basename } from 'node:path';
+import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const ROOT = process.cwd();
-const DEPLOY_DIR = join(ROOT, 'baby-feeding-tracker-deploy');
-const OUTPUT_ZIP = join(ROOT, 'deploy.zip');
-const LEGACY_ZIP = join(ROOT, 'baby-feeding-tracker-deploy.zip');
+// staging 走系统临时目录，避免污染项目目录
+const DEPLOY_DIR = join(tmpdir(), `baby-feeding-tracker-pack-${Date.now()}`);
+// 唯一产物：项目父目录下的 deploy.zip（baobaoweinaiji/deploy.zip）
+const OUTPUT_ZIP = join(ROOT, '..', 'deploy.zip');
+// fallback（Linux 无 zip 命令时）：同目录
+const OUTPUT_TAR = join(ROOT, '..', 'deploy.tar.gz');
 
 const EXCLUDE_DIRS = new Set([
   'node_modules', '.next', '.git',
   '.claude', '.agents', '.windsurf',
+  // 历史 pack.mjs 留下的本地 staging 目录（万一没及时清理，避免被打进 zip）
   'baby-feeding-tracker-deploy',
   // src/generated/ 整个目录都是 Prisma 生成的，服务器 prisma generate 会重建
   'generated',
@@ -42,8 +45,6 @@ const EXCLUDE_DIRS = new Set([
 const EXCLUDE_FILES = new Set([
   // 数据库文件（绝不能覆盖线上）
   'dev.db', 'dev.db-journal',
-  // 打包产物
-  'deploy.zip', 'baby-feeding-tracker-deploy.zip',
   // 本地 .env（绝不能覆盖服务器的 .env；.env.example 保留）
   '.env',
   // 构建缓存 / AI 工具配置
@@ -77,7 +78,8 @@ function copyTree(src, dst) {
       }
     } else if (entry.isSymbolicLink()) {
       try {
-        cpSync(s, d, { dereference: false });
+        // 符号链接：原样复制内容，不跟随
+        writeFileSync(d, readFileSync(s));
       } catch (err) {
         console.warn(`  ! 跳过（symlink）: ${rel}`);
       }
@@ -96,19 +98,18 @@ function log(step, msg) {
 }
 
 /**
- * 删除 deploy 目录（彻底，包括隐藏文件 .env）。
+ * 删除目录（彻底，包括隐藏文件 .env）。
  * Node 的 rmSync 在 Windows 上对 .env 这类点文件会失败，
  * 所以 Windows 下用 PowerShell Remove-Item（兼容 hidden/system 文件）。
  */
-function cleanDeployDir(dir) {
+function cleanDir(dir) {
   if (!existsSync(dir)) return;
   if (process.platform === 'win32') {
     try {
       execSync(`powershell -NoProfile -Command "Remove-Item -LiteralPath '${dir}' -Recurse -Force"`, {
         stdio: 'ignore',
       });
-    } catch (err) {
-      // 兜底：Node rmSync（可能删不干净，但起码能把能删的删了）
+    } catch {
       rmSync(dir, { recursive: true, force: true });
     }
   } else {
@@ -116,18 +117,19 @@ function cleanDeployDir(dir) {
   }
 }
 
-// ---------- Step 1: 刷新 deploy 目录 ----------
-log('1/3', `刷新 ${relative(ROOT, DEPLOY_DIR)}/ ...`);
-cleanDeployDir(DEPLOY_DIR);
+// ---------- Step 1: 拷贝到 staging 目录（系统临时目录） ----------
+log('1/3', `拷贝项目 → ${DEPLOY_DIR}`);
+cleanDir(DEPLOY_DIR);
 copyTree(ROOT, DEPLOY_DIR);
 log('1/3', `已拷贝 ${readdirSync(DEPLOY_DIR).length} 个顶层条目`);
 
-// ---------- Step 2: 生成 zip ----------
-log('2/3', '生成 deploy.zip ...');
+// ---------- Step 2: 打包 ----------
+log('2/3', `打包 → ${OUTPUT_ZIP}`);
 if (existsSync(OUTPUT_ZIP)) rmSync(OUTPUT_ZIP);
+if (existsSync(OUTPUT_TAR)) rmSync(OUTPUT_TAR);
 
 const platform = process.platform;
-let zipCreated = false;
+let archivePath = OUTPUT_ZIP;
 
 if (platform === 'win32') {
   // Windows: 用 PowerShell Compress-Archive。
@@ -159,7 +161,6 @@ if (platform === 'win32') {
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     log('2/3', `PowerShell: ${out.trim()}`);
-    zipCreated = existsSync(OUTPUT_ZIP);
   } finally {
     rmSync(tmpPs, { force: true });
   }
@@ -167,37 +168,25 @@ if (platform === 'win32') {
   // Linux / macOS: 优先用 zip，缺失则用 tar.gz
   try {
     execFileSync('zip', ['-r', '-q', OUTPUT_ZIP, '.'], { cwd: DEPLOY_DIR });
-    zipCreated = true;
     log('2/3', 'zip 命令成功');
   } catch {
     log('2/3', 'zip 命令不可用，回退到 tar.gz');
-    const tarGz = join(ROOT, 'deploy.tar.gz');
-    if (existsSync(tarGz)) rmSync(tarGz);
-    execFileSync('tar', ['-czf', tarGz, '.'], { cwd: DEPLOY_DIR });
-    log('2/3', `已生成 ${basename(tarGz)}（不是 zip，请用 tar -xzf 解压）`);
+    archivePath = OUTPUT_TAR;
+    execFileSync('tar', ['-czf', OUTPUT_TAR, '.'], { cwd: DEPLOY_DIR });
   }
 }
 
-if (!zipCreated && !existsSync(OUTPUT_ZIP)) {
-  console.error('❌ 打包失败：未生成 deploy.zip');
+if (!existsSync(archivePath)) {
+  console.error('❌ 打包失败：未生成产物');
+  cleanDir(DEPLOY_DIR);
   process.exit(1);
 }
 
-// ---------- Step 3: 镜像备份名 ----------
-log('3/3', '镜像 baby-feeding-tracker-deploy.zip ...');
-if (existsSync(LEGACY_ZIP)) rmSync(LEGACY_ZIP);
-if (existsSync(OUTPUT_ZIP)) {
-  try {
-    writeFileSync(LEGACY_ZIP, readFileSync(OUTPUT_ZIP));
-  } catch (err) {
-    console.warn(`  ! 镜像失败: ${err.message}`);
-  }
-}
+// ---------- Step 3: 清理 staging ----------
+log('3/3', '清理临时目录');
+cleanDir(DEPLOY_DIR);
 
-const size = existsSync(OUTPUT_ZIP) ? statSync(OUTPUT_ZIP).size : 0;
+const size = statSync(archivePath).size;
 console.log(`\n✅ 打包完成`);
-console.log(`   ${relative(ROOT, OUTPUT_ZIP).padEnd(38)} ${bytes(size)}`);
-if (existsSync(LEGACY_ZIP)) {
-  console.log(`   ${relative(ROOT, LEGACY_ZIP).padEnd(38)} ${bytes(statSync(LEGACY_ZIP).size)}`);
-}
+console.log(`   ${relative(join(ROOT, '..'), archivePath).padEnd(28)} ${bytes(size)}`);
 console.log(`\n📤 下一步：把 deploy.zip 上传到服务器 ${'/www/wwwroot/baby-feeding-tracker/'} 并解压。`);

@@ -16,9 +16,21 @@ datasource db {
 model FeedingRecord {
   /// 主键，cuid
   id        String   @id @default(cuid())
-  /// 奶量，单位毫升(ml)
-  amount    Int
+  /// 奶量，单位毫升(ml)，可为空（仅记录时间不记录奶量时为 null）
+  amount    Int?
   /// 喂奶发生的时间
+  time      DateTime @default(now())
+  /// 记录创建时间
+  createdAt DateTime @default(now())
+}
+
+/// 一次换尿布记录
+model DiaperRecord {
+  /// 主键，cuid
+  id        String   @id @default(cuid())
+  /// 尿布状态：'pee' 嘘嘘 / 'poop' 便便 / 'both' 都有
+  type      String
+  /// 换尿布事件实际发生的时间
   time      DateTime @default(now())
   /// 记录创建时间
   createdAt DateTime @default(now())

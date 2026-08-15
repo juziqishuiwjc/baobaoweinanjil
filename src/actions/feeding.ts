@@ -6,14 +6,14 @@ import { prisma } from "@/lib/prisma";
 /**
  * 新增一条喂奶记录。
  *
- * @param amount 奶量（毫升，ml）
+ * @param amount 奶量（毫升，ml），可省略 / 为 null（仅记录时间、不记录奶量）
  * @param time   喂奶发生的时间；不传则取当前时间
  * @returns 创建后的记录
  */
-export async function addFeedingRecord(amount: number, time?: Date) {
+export async function addFeedingRecord(amount?: number | null, time?: Date) {
   const record = await prisma.feedingRecord.create({
     data: {
-      amount,
+      amount: amount ?? null,
       time: time ?? new Date(),
     },
   });
