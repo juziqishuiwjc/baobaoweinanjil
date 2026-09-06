@@ -110,7 +110,7 @@ npm run build
 npx prisma db push
 ```
 
-这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好所有数据表（喂奶记录 `FeedingRecord` + 换尿布记录 `DiaperRecord`）。
+这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好所有数据表（喂奶记录 `FeedingRecord` + 睡眠记录 `SleepRecord`）。
 
 > 执行完后用 `ls -l dev.db` 应能看到这个文件，说明数据库就绪了。
 >
@@ -282,17 +282,22 @@ npm run build
 pm2 restart baby-feeding-tracker
 ```
 
-**Q9（🚨 数据库结构变更红线 · 2026-08-15 换尿布功能实测）：本次更新改了 `prisma/schema.prisma`（新增表/字段），部署后需要做什么？**
-A：**必须在服务器解压源码后、执行 `npm run build` 之前，先执行一次：**
+**Q9（🚨 数据库结构变更红线 · 2026-09-02 睡眠功能实测）：本次更新改了 `prisma/schema.prisma`（新增 `SleepRecord` 表 + 删除 `DiaperRecord` 表），部署后需要做什么？**
+A：**必须在服务器解压源码后、执行 `npm run build` 之前，先备份数据库、再执行一次：**
 
 ```bash
 cd /www/wwwroot/baby-feeding-tracker
+# 1. 先备份（本次变更会 DROP 换尿布表，历史数据将被删除，备份后可随时找回）
+cp dev.db dev.db.backup-$(date +%Y%m%d)
+# 2. 同步表结构
 npx prisma db push
 ```
 
-- **为什么**：`prisma db push` 会把线上 `dev.db` 的表结构**增量对齐**到最新 schema（例如为换尿布功能新建 `DiaperRecord` 表），**原有数据（喂奶记录等）一条都不会丢**。
-- **跳过的后果**：不执行就直接 build + 重启，页面能打开，但一访问新功能就报 **`no such table: DiaperRecord`** 500 错误。
+- **为什么**：`prisma db push` 会把线上 `dev.db` 的表结构**增量对齐**到最新 schema（本次为新建 `SleepRecord` 表 + 删除 `DiaperRecord` 表）。
+- **⚠️ 删表变更会丢数据**：对「新增表/加字段」push 不丢数据；但对「**删表/删字段**」会**直接 DROP 并永久删除该表全部数据**（本次即换尿布历史）。所以**必须先执行上面的 `cp` 备份**。
+- **跳过的后果**：不执行就直接 build + 重启，页面能打开，但一访问睡眠功能就报 **`no such table: SleepRecord`** 500 错误。
 - **绝对禁止**：不要用 `rm dev.db` 删库重建的方式来「同步结构」——那会清空全部线上记录。结构同步只能走 `npx prisma db push`。
+- **⚠️ 删除文件类变更的红线（2026-09-02 睡眠功能实测踩坑）**：`unzip` 覆盖解压**只会新增/覆盖文件，不会删除服务器上已不存在于新包中的旧文件**。本次下线换尿布功能删除了 `src/actions/diaper.ts` / `src/components/DiaperForm.tsx` / `src/components/DiaperHistory.tsx`，服务器上它们仍然残留，新 Prisma Client 已无 `diaperRecord`，build 直接报 **`error TS2339: Property 'diaperRecord' does not exist on type 'PrismaClient'`**。**修复**：对照本地 `git status` / 变更清单，把本次删除的文件在服务器上手动 `rm` 掉再重新 `npm run build`。
 
 > **绝对禁止**：
 > - `rm dev.db` 后再 `unzip`（除非你明确想清空数据）；

@@ -17,19 +17,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## [Project Context]
 
 - **项目定位**：宝宝喂奶记录器（Baby Feeding Tracker），为记录新生儿**王书熠**（2026-06-13 出生）配方奶喂奶时间而开发的轻量级 Web 应用。MVP 无需登录、无多用户体系。
-- **线上状态**：✅ **MVP 已成功部署至独立 Linux 服务器（宝塔面板）**，绑定专属域名 + HTTPS 证书稳定运行，最新功能（非必填奶量、动态间隔、宝宝头像、Tabs 双视图 + 换尿布记录）已在生产环境验证。
+- **线上状态**：✅ **MVP 已成功部署至独立 Linux 服务器（宝塔面板）**，绑定专属域名 + HTTPS 证书稳定运行；2026-09-02 睡眠记录功能已上线本地（新增睡眠、移除换尿布，**待部署生产**，部署时见 Q9 删表红线）。
 - **数据架构**：**SQLite 单文件数据库**（详见下方数据库条目）。后续开发必须保持与现有架构兼容——除非显式规划迁移到 Postgres / 多端同步，**不得擅自引入新数据库或重构数据访问层**。
 - **当前核心功能**：
-  1. **顶部 Tabs 双视图**（Shadcn Tabs 切换「喂奶」/「换尿布」，两组件树与两份历史时间轴完全独立，2026-08-15 上线）；
+  1. **顶部 Tabs 双视图**（Shadcn Tabs 切换「喂奶」/「睡眠」，两组件树与两份历史时间轴完全独立；2026-08-15 上线，2026-09-02 换尿布替换为睡眠）；
   2. **倒计时表盘**（基于「上次喂奶时间 + 间隔小时数」实时计算下次喂奶时间）；
   2. **动态时间间隔**（用户在首页表盘 1 / 1.5 / 2 / 2.5 / 3 小时自由切换，持久化到 `localStorage`）；
   3. **可选奶量录入**（首页「记录」表单中奶量为非必填，可仅记时间不记奶量）；
   4. **补记之前喂奶**（首页表单下方的次级入口 `补记之前喂奶` 按钮，弹 Dialog 选择历史时间 `datetime-local`，可同时补奶量；时间不能晚于现在）；
   5. **浏览器通知提醒**（倒计时归零时调 Web Notifications API 弹系统通知；首次进入页面主动请求一次权限；同一周期内通过 `useRef` 去重，新一轮喂奶自动重置）；
   6. **历史记录列表**（按时间倒序展示最近 50 条）；
-  7. **一键换尿布记录**（`DiaperForm` 三个大按钮 `h-20`：💦嘘嘘 / 💩便便 / 🧻都有，点击即记录当前时间，单手盲操友好；另有同款「补记之前换尿布」Dialog）；
-  8. **换尿布独立历史**（`DiaperHistory` 服务端组件，与喂奶历史 UI 同构但数据完全隔离，各取最近 50 条）。
-- **数据库**：**SQLite 单文件数据库**（`dev.db`，位于项目根）。通过 **Prisma 7 + driver adapter**（`@prisma/adapter-better-sqlite3`）访问。数据模型两个：`FeedingRecord`（`id` / `amount?` / `time` / `createdAt`，`amount` 可为空）与 `DiaperRecord`（`id` / `type` / `time` / `createdAt`，`type` 为字符串 `'pee' | 'poop' | 'both'`，联合类型定义在 `src/actions/diaper.ts` 的 `DiaperType`）。
+  7. **一键睡眠计时**（`SleepTracker` 客户端组件：未在睡时 `h-20` 大按钮「开始睡觉」；睡眠中实时显示「宝宝已睡 X小时X分X秒」+ 可选醒来体温（30–45℃ 校验）+「醒来了」结束计时 +「取消」撤回误触（删除进行中记录）；同一时间仅允许一条进行中记录，服务端兜底拒绝重复开始）；
+  8. **睡眠补记与独立历史**（`addSleepRecord` 补录入睡/醒来时间 + 可选体温，校验醒来晚于入睡且不晚于现在；`SleepHistory` 服务端组件展示最近 50 条：**昼夜徽标按入睡时间自动判断**（20:00–次日 7:00 为夜间，不入库，见 `src/lib/sleep.ts`）+ 顶部「今日已睡」汇总（跨午夜长觉按与今天的交集裁剪）+ 每条删除（`SleepDeleteButton` 二次确认））。
+- **数据库**：**SQLite 单文件数据库**（`dev.db`，位于项目根）。通过 **Prisma 7 + driver adapter**（`@prisma/adapter-better-sqlite3`）访问。数据模型两个：`FeedingRecord`（`id` / `amount?` / `time` / `createdAt`，`amount` 可为空）与 `SleepRecord`（`id` / `startTime` / `endTime?` / `temperature?` / `createdAt`，`endTime` 为 null 表示睡眠中；2026-09-02 新增，同时**移除了 `DiaperRecord` 换尿布模型**，本地库已备份 `dev.db.backup-diaper-20260902`）。
 - **前端布局**：严格 **Mobile-First 居中布局**——所有页面外层使用 `max-w-md mx-auto`「手机壳」容器，桌面端两侧留白，移动端铺满。**新增页面/组件必须沿用此布局约定**。
 - **视觉基调**：柔和蓝色主色调（oklch hue 250），圆角卡片，母婴场景的温和观感。
 - **可配置项（用户态，无需改代码）**：① 喂奶间隔由用户在首页表盘切换（1 / 1.5 / 2 / 2.5 / 3 小时），持久化到 `localStorage`（key `feeding-interval-hours`）；② 首页 Header 含宝宝头像（`public/avatar.jpg`，用户自行替换）。
@@ -68,7 +68,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
    9.5 **数据库保护**：`npm run pack` 严格排除 `dev.db` / `dev.db-journal`（见 `scripts/pack.mjs` 的 `EXCLUDE_FILES`）。增量部署流程：上传 `baobaoweinaiji/deploy.zip` → 解压 → `npm run build` → 重启 PM2，**绝不**手动 `rm dev.db`、**绝不**用 scp 把本地 `dev.db` 覆盖线上数据库。详细排障与部署步骤见 [BT_DEPLOY.md](BT_DEPLOY.md)；打包流程见 [README.md](README.md)。
 
-10. **🚨 Prisma Schema 变更部署规约（2026-08-15 换尿布功能新增，硬性红线）**：任何涉及 `prisma/schema.prisma` 的改动（新增表/字段），本地开发侧的完整流程是「改 schema → **`npx prisma db push`**（本地建表）→ `npx prisma generate` → 写业务代码」。**交付时 AI 必须主动提醒用户服务器端的增量同步方案**：服务器解压新源码后、`npm run build` 之前，**必须先执行 `npx prisma db push`**——该命令只增量对齐线上 `dev.db` 的表结构、**不丢任何原有数据**；跳过则新功能一访问就报 **`no such table: ...`** 500。**绝对禁止**建议用户用 `rm dev.db` 删库重来同步结构。完整顺序：解压 → `npx prisma db push`（仅 schema 有变更时）→ `npm run build` → `pm2 restart baby-feeding-tracker`。详见 [BT_DEPLOY.md](BT_DEPLOY.md) Q9。
+10. **🚨 Prisma Schema 变更部署规约（2026-08-15 新增，2026-09-02 补充删表红线，硬性）**：任何涉及 `prisma/schema.prisma` 的改动（新增表/字段），本地开发侧的完整流程是「改 schema → **`npx prisma db push`**（本地建表）→ `npx prisma generate` → 写业务代码」。**交付时 AI 必须主动提醒用户服务器端的增量同步方案**：服务器解压新源码后、`npm run build` 之前，**必须先执行 `npx prisma db push`**——该命令对**新增表/加字段**是增量对齐、不丢原有数据；但对**删表/删字段会直接 DROP 并永久删除该表数据**（2026-09-02 睡眠替换换尿布时即 DROP 了 `DiaperRecord` 表），**此类破坏性变更操作前必须先 `cp dev.db dev.db.backup-<日期>` 备份**（本地 Prisma 7 还会弹 AI 安全确认，需用户明确同意才能 `--accept-data-loss`）。跳过 push 则新功能一访问就报 **`no such table: ...`** 500。**绝对禁止**建议用户用 `rm dev.db` 删库重来同步结构。完整顺序：解压 → 备份 dev.db（涉删表时）→ `npx prisma db push`（仅 schema 有变更时）→ `npm run build` → `pm2 restart baby-feeding-tracker`。详见 [BT_DEPLOY.md](BT_DEPLOY.md) Q9。
 
 ## [Production Gotchas · 排障速查]
 
@@ -86,8 +86,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 > MVP 已完成。以下为**待办（Todo）**功能，按优先级排列，开发前需与产品负责人（王律）确认范围。
 
 - [ ] **Todo**：按周/月统计总奶量、平均单次奶量、每日喂奶次数图表（可考虑引入轻量图表库）
-- [ ] **Todo**：修改已有记录（编辑奶量/喂奶时间）
-- [ ] **Todo**：删除记录（带二次确认，防误删）
+- [ ] **Todo**：修改已有记录（编辑奶量/喂奶时间；睡眠记录已支持删除，喂奶记录的删除/修改仍待办）
+- [x] **Done（2026-09-02）**：睡眠记录（计时 + 补记 + 昼夜自动分类 + 体温备注 + 今日已睡汇总 + 删除）；同时移除换尿布功能
 - [ ] **Todo**：历史记录按天分组的时间轴展示（当前为平铺倒序列表）
 - [ ] **Todo**：PWA 离线支持 + 添加到主屏幕（manifest + service worker）
 - [ ] **Todo**：家庭成员多端**实时同步**（需引入登录/账号体系，从 SQLite 迁移到 Postgres）

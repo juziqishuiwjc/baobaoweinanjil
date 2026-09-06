@@ -24,14 +24,16 @@ model FeedingRecord {
   createdAt DateTime @default(now())
 }
 
-/// 一次换尿布记录
-model DiaperRecord {
+/// 一次睡眠记录
+model SleepRecord {
   /// 主键，cuid
-  id        String   @id @default(cuid())
-  /// 尿布状态：'pee' 嘘嘘 / 'poop' 便便 / 'both' 都有
-  type      String
-  /// 换尿布事件实际发生的时间
-  time      DateTime @default(now())
+  id          String    @id @default(cuid())
+  /// 入睡时间
+  startTime   DateTime
+  /// 醒来时间；null 表示还在睡（计时未结束）
+  endTime     DateTime?
+  /// 体温（℃），未量则为 null
+  temperature Float?
   /// 记录创建时间
-  createdAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }

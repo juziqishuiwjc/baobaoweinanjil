@@ -46,6 +46,7 @@ next-env.d.ts
 # prisma (本地 SQLite 数据库文件，二进制，勿提交)
 *.db
 *.db-journal
+*.db.backup-*
 prisma/*.db
 prisma/*.db-journal
 

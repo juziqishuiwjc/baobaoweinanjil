@@ -14,33 +14,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-/** 把 Date 格式化为 <input type="datetime-local"> 需要的 `YYYY-MM-DDTHH:MM` 字符串（本地时区） */
-function toLocalInputValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
-/** 从 datetime-local 字符串解析为本地时区的 Date 对象 */
-function parseLocalInputValue(value: string): Date | null {
-  // value 形如 "2026-08-09T14:30"
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const [, y, mo, d, h, mi] = match;
-  const date = new Date(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    0,
-    0,
-  );
-  return Number.isNaN(date.getTime()) ? null : date;
-}
+// datetime-local 格式化/解析工具已提取到 lib/datetime 共享（喂奶/睡眠表单共用）
+import {
+  parseLocalInputValue,
+  toLocalInputValue,
+} from "@/lib/datetime";
 
 export default function FeedingForm() {
   const [amount, setAmount] = useState("");
