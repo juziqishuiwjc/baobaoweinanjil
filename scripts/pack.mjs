@@ -52,11 +52,14 @@ const EXCLUDE_FILES = new Set([
   'skills-lock.json',
 ]);
 const EXCLUDE_SUFFIX = ['.tsbuildinfo'];
+// 数据库备份（dev.db.backup-日期）同样不进 zip：体积会随照片增长，且不属于部署内容
+const EXCLUDE_PATTERN = [/^dev\.db\.backup-/];
 
 function shouldExclude(name, fullRel) {
   if (EXCLUDE_DIRS.has(name)) return true;
   if (EXCLUDE_FILES.has(name)) return true;
   if (fullRel && fullRel.startsWith('src/generated/')) return true;
+  if (EXCLUDE_PATTERN.some((p) => p.test(name))) return true;
   return EXCLUDE_SUFFIX.some((s) => name.endsWith(s));
 }
 
