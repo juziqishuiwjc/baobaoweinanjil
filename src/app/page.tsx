@@ -1,10 +1,11 @@
 import Image from "next/image";
-import { getRecentRecords } from "@/actions/feeding";
-import { getActiveSleep, getSleepRecords } from "@/actions/sleep";
+import { getRecentRecords, getTodayRecords } from "@/actions/feeding";
+import { getPhotos } from "@/actions/photo";
 import FeedingTimer from "@/components/FeedingTimer";
 import FeedingForm from "@/components/FeedingForm";
-import SleepTracker from "@/components/SleepTracker";
-import SleepHistory from "@/components/SleepHistory";
+import TodayFeedingStats from "@/components/TodayFeedingStats";
+import PhotoUploader from "@/components/PhotoUploader";
+import PhotoGrid from "@/components/PhotoGrid";
 import { formatFriendlyTime } from "@/lib/datetime";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -14,22 +15,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// 首页依赖数据库查询（喂养/睡眠记录），构建时不可预渲染。
+// 首页依赖数据库查询（喂养记录/今日统计/照片），构建时不可预渲染。
 // 强制按请求时动态渲染，跳过 build 阶段的静态预生成。
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  // 三个列表数据相互独立，可并发查询
-  const [records, sleepRecords, activeSleepRecord] = await Promise.all([
+  // 三组数据相互独立，可并发查询（今日统计按 0 点起算，历史列表取最近 50 条）
+  const [records, todayRecords, photos] = await Promise.all([
     getRecentRecords(),
-    getSleepRecords(),
-    getActiveSleep(),
+    getTodayRecords(),
+    getPhotos(),
   ]);
   const latestRecord = records[0] ?? null;
-  // 只把计时卡片需要的最小字段传给客户端组件
-  const activeSleep = activeSleepRecord
-    ? { id: activeSleepRecord.id, startTime: activeSleepRecord.startTime }
-    : null;
 
   return (
     <main className="flex min-h-screen w-full justify-center bg-muted/40">
@@ -45,24 +42,27 @@ export default async function Home() {
             className="mb-2 h-16 w-16 rounded-full border-2 border-primary/20 object-cover shadow-sm"
           />
           <h1 className="text-2xl font-semibold tracking-tight">书熠的喂养记录</h1>
-          <p className="text-sm text-muted-foreground">配方奶喂养 · 睡眠记录</p>
+          <p className="text-sm text-muted-foreground">配方奶喂养 · 成长相册</p>
         </header>
 
-        {/* 顶部 Tabs：喂奶 / 睡眠 两大功能切换，两组件树互不影响 */}
+        {/* 顶部 Tabs：喂奶 / 相册 两大功能切换，两组件树互不影响 */}
         <Tabs defaultValue="feeding" className="gap-4">
           <TabsList className="grid h-12 w-full grid-cols-2">
             <TabsTrigger value="feeding" className="text-base">
               🍼 喂奶
             </TabsTrigger>
-            <TabsTrigger value="sleep" className="text-base">
-              😴 睡眠
+            <TabsTrigger value="photos" className="text-base">
+              📷 相册
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab 1：喂奶（原有功能原样迁移） */}
+          {/* Tab 1：喂奶（计时 + 今日统计 + 记录 + 历史） */}
           <TabsContent value="feeding" className="flex flex-col gap-6">
             {/* 倒计时表盘 */}
             <FeedingTimer lastFeedTime={latestRecord?.time ?? null} />
+
+            {/* 今日喝奶总量统计（0-24 点为一天，未填奶量按 150ml 计） */}
+            <TodayFeedingStats records={todayRecords} />
 
             {/* 快速记录 */}
             <FeedingForm />
@@ -102,15 +102,21 @@ export default async function Home() {
             </section>
           </TabsContent>
 
-          {/* Tab 2：睡眠（计时器 + 补记 + 历史列表） */}
-          <TabsContent value="sleep" className="flex flex-col gap-6">
-            {/* 睡眠计时卡片（开始/醒来/取消 + 补记入口） */}
-            <SleepTracker activeSleep={activeSleep} />
+          {/* Tab 2：成长相册（上传 + 网格浏览 + 查看大图/删除） */}
+          <TabsContent value="photos" className="flex flex-col gap-4">
+            {/* 上传入口（选择即压缩预览，确认后入库） */}
+            <PhotoUploader />
 
-            {/* 历史记录（独立列表，与喂奶历史完全隔离） */}
-            <section className="flex flex-col gap-3">
-              <SleepHistory records={sleepRecords} />
-            </section>
+            {/* 照片网格（最近 60 张，缩略图加载；空态给引导文案） */}
+            {photos.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  还没有照片，上传第一张宝宝照片吧
+                </CardContent>
+              </Card>
+            ) : (
+              <PhotoGrid photos={photos} />
+            )}
           </TabsContent>
         </Tabs>
       </div>

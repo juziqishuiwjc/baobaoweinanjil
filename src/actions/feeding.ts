@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { getStartOfToday } from "@/lib/feeding";
 
 /**
  * 新增一条喂奶记录。
@@ -33,5 +34,18 @@ export async function getRecentRecords() {
   return prisma.feedingRecord.findMany({
     orderBy: { time: "desc" },
     take: 50,
+  });
+}
+
+/**
+ * 获取今日（本地时间 0 点起）的全部喂奶记录。
+ *
+ * 独立于 getRecentRecords（那里 take 50 只够历史列表），
+ * 供「今日喝奶总量」统计使用；补记的时间也算今天的，语义正确。
+ */
+export async function getTodayRecords() {
+  return prisma.feedingRecord.findMany({
+    where: { time: { gte: getStartOfToday() } },
+    orderBy: { time: "asc" },
   });
 }

@@ -110,7 +110,7 @@ npm run build
 npx prisma db push
 ```
 
-这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好所有数据表（喂奶记录 `FeedingRecord` + 睡眠记录 `SleepRecord`）。
+这条命令会根据 `prisma/schema.prisma` 在项目根目录创建 `dev.db` 文件并建好所有数据表（喂奶记录 `FeedingRecord` + 照片记录 `PhotoRecord` + 睡眠记录 `SleepRecord`〔历史表，功能已停用〕）。
 
 > 执行完后用 `ls -l dev.db` 应能看到这个文件，说明数据库就绪了。
 >
@@ -282,22 +282,27 @@ npm run build
 pm2 restart baby-feeding-tracker
 ```
 
-**Q9（🚨 数据库结构变更红线 · 2026-09-02 睡眠功能实测）：本次更新改了 `prisma/schema.prisma`（新增 `SleepRecord` 表 + 删除 `DiaperRecord` 表），部署后需要做什么？**
-A：**必须在服务器解压源码后、执行 `npm run build` 之前，先备份数据库、再执行一次：**
+**Q9（🚨 数据库结构变更红线 · 2026-10-04 相册功能更新）：本次更新改了 `prisma/schema.prisma`（新增 `PhotoRecord` 表）并下线了睡眠功能，部署后需要做什么？**
+A：**必须在服务器解压源码后、执行 `npm run build` 之前，先删残留文件、备份数据库、再执行一次：**
 
 ```bash
 cd /www/wwwroot/baby-feeding-tracker
-# 1. 先备份（本次变更会 DROP 换尿布表，历史数据将被删除，备份后可随时找回）
+# 0. 【先做】手动删除本次下线的睡眠功能残留文件（zip 覆盖解压不会删除它们！）
+rm -f src/actions/sleep.ts src/components/SleepTracker.tsx \
+      src/components/SleepHistory.tsx src/components/SleepDeleteButton.tsx src/lib/sleep.ts
+# 1. 备份数据库（本次变更只加表不丢数据，备份是习惯性保险）
 cp dev.db dev.db.backup-$(date +%Y%m%d)
-# 2. 同步表结构
+# 2. 同步表结构（新建 PhotoRecord 表）
 npx prisma db push
 ```
 
-- **为什么**：`prisma db push` 会把线上 `dev.db` 的表结构**增量对齐**到最新 schema（本次为新建 `SleepRecord` 表 + 删除 `DiaperRecord` 表）。
-- **⚠️ 删表变更会丢数据**：对「新增表/加字段」push 不丢数据；但对「**删表/删字段**」会**直接 DROP 并永久删除该表全部数据**（本次即换尿布历史）。所以**必须先执行上面的 `cp` 备份**。
-- **跳过的后果**：不执行就直接 build + 重启，页面能打开，但一访问睡眠功能就报 **`no such table: SleepRecord`** 500 错误。
+- **为什么**：`prisma db push` 会把线上 `dev.db` 的表结构**增量对齐**到最新 schema（本次为新建 `PhotoRecord` 表）。
+- **本次是 additive 变更**：只加表、不删表/字段，喂奶历史与睡眠历史数据都不受影响。若 push 时弹出「数据丢失确认」即为异常，**停下来排查**，不要盲目 `--accept-data-loss`。
+- **跳过的后果**：不执行就直接 build + 重启，页面能打开，但相册一上传/访问就报 **`no such table: PhotoRecord`** 500 错误。
 - **绝对禁止**：不要用 `rm dev.db` 删库重建的方式来「同步结构」——那会清空全部线上记录。结构同步只能走 `npx prisma db push`。
-- **⚠️ 删除文件类变更的红线（2026-09-02 睡眠功能实测踩坑）**：`unzip` 覆盖解压**只会新增/覆盖文件，不会删除服务器上已不存在于新包中的旧文件**。本次下线换尿布功能删除了 `src/actions/diaper.ts` / `src/components/DiaperForm.tsx` / `src/components/DiaperHistory.tsx`，服务器上它们仍然残留，新 Prisma Client 已无 `diaperRecord`，build 直接报 **`error TS2339: Property 'diaperRecord' does not exist on type 'PrismaClient'`**。**修复**：对照本地 `git status` / 变更清单，把本次删除的文件在服务器上手动 `rm` 掉再重新 `npm run build`。
+- **⚠️ 删除文件类变更的红线（2026-09-02 换尿布、2026-10-04 睡眠两次实测踩坑）**：`unzip` 覆盖解压**只会新增/覆盖文件，不会删除服务器上已不存在于新包中的旧文件**。本次下线睡眠功能删除了 `src/actions/sleep.ts` / `src/components/SleepTracker.tsx` / `src/components/SleepHistory.tsx` / `src/components/SleepDeleteButton.tsx` / `src/lib/sleep.ts`，服务器上它们仍然残留，build 会报 **`error TS2307: Cannot find module '@/actions/sleep'`** 类错误。**修复**：对照本地 `git status` / 变更清单，把本次删除的文件在服务器上手动 `rm` 掉再重新 `npm run build`。
+- **⚠️ next.config.ts 本次有变更**：新增了 `serverActions.bodySizeLimit: "2mb"`（照片上传需要，默认 1MB 不够）。该配置**重启进程才生效**——build 后必须 `pm2 restart baby-feeding-tracker`。
+- **照片存储提示**：照片以压缩后的 data URL 存入 `dev.db`（每张约 200-400KB），数据库体积会随照片数增长（60 张 ≈ 15-20MB）。宝塔的 `dev.db` 定期备份计划任务会连带备份照片，无需额外操作。
 
 > **绝对禁止**：
 > - `rm dev.db` 后再 `unzip`（除非你明确想清空数据）；

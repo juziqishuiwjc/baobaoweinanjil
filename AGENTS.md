@@ -17,19 +17,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## [Project Context]
 
 - **项目定位**：宝宝喂奶记录器（Baby Feeding Tracker），为记录新生儿**王书熠**（2026-06-13 出生）配方奶喂奶时间而开发的轻量级 Web 应用。MVP 无需登录、无多用户体系。
-- **线上状态**：✅ **MVP 已成功部署至独立 Linux 服务器（宝塔面板）**，绑定专属域名 + HTTPS 证书稳定运行；2026-09-02 睡眠记录功能已上线本地（新增睡眠、移除换尿布，**待部署生产**，部署时见 Q9 删表红线）。
+- **线上状态**：✅ **MVP 已成功部署至独立 Linux 服务器（宝塔面板）**，绑定专属域名 + HTTPS 证书稳定运行；2026-10-04 本地新增「今日喝奶统计 + 成长相册（照片存 SQLite）」，同时**下线睡眠记录功能**（仅移除功能代码与入口，`SleepRecord` 表及已录数据保留，**待部署生产**，部署时见 Q9 残留文件红线）。
 - **数据架构**：**SQLite 单文件数据库**（详见下方数据库条目）。后续开发必须保持与现有架构兼容——除非显式规划迁移到 Postgres / 多端同步，**不得擅自引入新数据库或重构数据访问层**。
 - **当前核心功能**：
-  1. **顶部 Tabs 双视图**（Shadcn Tabs 切换「喂奶」/「睡眠」，两组件树与两份历史时间轴完全独立；2026-08-15 上线，2026-09-02 换尿布替换为睡眠）；
+  1. **顶部 Tabs 双视图**（Shadcn Tabs 切换「喂奶」/「相册」，两组件树完全独立；2026-08-15 上线，2026-09-02 换尿布替换为睡眠，2026-10-04 睡眠下线后替换为成长相册）；
   2. **倒计时表盘**（基于「上次喂奶时间 + 间隔小时数」实时计算下次喂奶时间）；
   2. **动态时间间隔**（用户在首页表盘 1 / 1.5 / 2 / 2.5 / 3 小时自由切换，持久化到 `localStorage`）；
   3. **可选奶量录入**（首页「记录」表单中奶量为非必填，可仅记时间不记奶量）；
   4. **补记之前喂奶**（首页表单下方的次级入口 `补记之前喂奶` 按钮，弹 Dialog 选择历史时间 `datetime-local`，可同时补奶量；时间不能晚于现在）；
   5. **浏览器通知提醒**（倒计时归零时调 Web Notifications API 弹系统通知；首次进入页面主动请求一次权限；同一周期内通过 `useRef` 去重，新一轮喂奶自动重置）；
   6. **历史记录列表**（按时间倒序展示最近 50 条）；
-  7. **一键睡眠计时**（`SleepTracker` 客户端组件：未在睡时 `h-20` 大按钮「开始睡觉」；睡眠中实时显示「宝宝已睡 X小时X分X秒」+ 可选醒来体温（30–45℃ 校验）+「醒来了」结束计时 +「取消」撤回误触（删除进行中记录）；同一时间仅允许一条进行中记录，服务端兜底拒绝重复开始）；
-  8. **睡眠补记与独立历史**（`addSleepRecord` 补录入睡/醒来时间 + 可选体温，校验醒来晚于入睡且不晚于现在；`SleepHistory` 服务端组件展示最近 50 条：**昼夜徽标按入睡时间自动判断**（20:00–次日 7:00 为夜间，不入库，见 `src/lib/sleep.ts`）+ 顶部「今日已睡」汇总（跨午夜长觉按与今天的交集裁剪）+ 每条删除（`SleepDeleteButton` 二次确认））。
-- **数据库**：**SQLite 单文件数据库**（`dev.db`，位于项目根）。通过 **Prisma 7 + driver adapter**（`@prisma/adapter-better-sqlite3`）访问。数据模型两个：`FeedingRecord`（`id` / `amount?` / `time` / `createdAt`，`amount` 可为空）与 `SleepRecord`（`id` / `startTime` / `endTime?` / `temperature?` / `createdAt`，`endTime` 为 null 表示睡眠中；2026-09-02 新增，同时**移除了 `DiaperRecord` 换尿布模型**，本地库已备份 `dev.db.backup-diaper-20260902`）。
+  7. **今日喝奶统计**（`TodayFeedingStats` 服务端组件，喂奶 Tab 内位于倒计时与记录表单之间；以**本地时间 0:00-24:00** 为统计周期，`getTodayRecords()` 按 0 点起查询；**未填奶量的记录仅在统计时按每次 150ml 估算计入**（常量 `DEFAULT_AMOUNT_ML`，见 `src/lib/feeding.ts`），不改写存储——历史列表仍显示「未记录奶量」）；
+  8. **成长相册**（「📷 相册」Tab：`PhotoUploader` 客户端 Canvas 压缩（大图 1280px q0.8 + 缩略图 320px q0.6，统一转 JPEG 剥离 EXIF），`PhotoRecord` 表存 data URL（`thumb` + `data` 双字段，网格只加载缩略图、点开才惰性取大图 `getPhotoData`）；网格 3 列方格，最近 60 张；`PhotoViewer` Dialog 看大图 + 备注 + 友好时间 + 删除（`PhotoDeleteButton` 二次确认）；`next.config.ts` 已设 `serverActions.bodySizeLimit: "2mb"`）。
+- **数据库**：**SQLite 单文件数据库**（`dev.db`，位于项目根）。通过 **Prisma 7 + driver adapter**（`@prisma/adapter-better-sqlite3`）访问。数据模型三个：`FeedingRecord`（`id` / `amount?` / `time` / `createdAt`，`amount` 可为空）、`SleepRecord`（2026-09-02 新增；**2026-10-04 睡眠功能已下线，但表与数据保留**，代码中无引用）、`PhotoRecord`（2026-10-04 新增：`id` / `thumb` / `data` / `caption?` / `takenAt` / `createdAt`，`thumb`/`data` 存客户端压缩后的 JPEG data URL）。历史沿革：换尿布 `DiaperRecord` 已于 2026-09-02 移除（本地库备份 `dev.db.backup-diaper-20260902`）；睡眠功能下线前备份 `dev.db.backup-sleep-20261004`。
 - **前端布局**：严格 **Mobile-First 居中布局**——所有页面外层使用 `max-w-md mx-auto`「手机壳」容器，桌面端两侧留白，移动端铺满。**新增页面/组件必须沿用此布局约定**。
 - **视觉基调**：柔和蓝色主色调（oklch hue 250），圆角卡片，母婴场景的温和观感。
 - **可配置项（用户态，无需改代码）**：① 喂奶间隔由用户在首页表盘切换（1 / 1.5 / 2 / 2.5 / 3 小时），持久化到 `localStorage`（key `feeding-interval-hours`）；② 首页 Header 含宝宝头像（`public/avatar.jpg`，用户自行替换）。
@@ -85,9 +85,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 > MVP 已完成。以下为**待办（Todo）**功能，按优先级排列，开发前需与产品负责人（王律）确认范围。
 
-- [ ] **Todo**：按周/月统计总奶量、平均单次奶量、每日喂奶次数图表（可考虑引入轻量图表库）
-- [ ] **Todo**：修改已有记录（编辑奶量/喂奶时间；睡眠记录已支持删除，喂奶记录的删除/修改仍待办）
-- [x] **Done（2026-09-02）**：睡眠记录（计时 + 补记 + 昼夜自动分类 + 体温备注 + 今日已睡汇总 + 删除）；同时移除换尿布功能
+- [ ] **Todo**：按周/月统计总奶量、平均单次奶量、喂奶次数图表（可考虑引入轻量图表库；「今日喝奶」统计已于 2026-10-04 上线）
+- [ ] **Todo**：修改已有记录（编辑奶量/喂奶时间；喂奶记录的删除/修改仍待办）
+- [ ] **Todo**：相册扩展——「加载更多」分页（当前只展示最近 60 张）、照片备注事后编辑、补记拍摄时间
+- [x] **Done（2026-10-04）**：今日喝奶统计（0-24 点周期，未填奶量按 150ml 估算）+ 成长相册（照片存 SQLite，客户端压缩 + 缩略图/大图双字段）；同时下线睡眠记录功能（`SleepRecord` 表与数据保留）
+- [x] **Done（2026-09-02）**：睡眠记录（计时 + 补记 + 昼夜自动分类 + 体温备注 + 今日已睡汇总 + 删除）；同时移除换尿布功能（睡眠功能已于 2026-10-04 下线）
 - [ ] **Todo**：历史记录按天分组的时间轴展示（当前为平铺倒序列表）
 - [ ] **Todo**：PWA 离线支持 + 添加到主屏幕（manifest + service worker）
 - [ ] **Todo**：家庭成员多端**实时同步**（需引入登录/账号体系，从 SQLite 迁移到 Postgres）

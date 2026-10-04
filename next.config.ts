@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
         "wangshuyi.wangjicheng.com",
         "wangshuyi.wangjicheng.com:443",
       ],
+      /**
+       * Server Action 请求体上限，默认 1MB 放不下照片 data URL。
+       * 客户端已把图压到 ~300KB（base64 后 ~400KB），2mb 留足抖动空间。
+       * 注意：改动后需重启进程（dev/prod）才生效。
+       */
+      bodySizeLimit: "2mb",
     },
   },
 };

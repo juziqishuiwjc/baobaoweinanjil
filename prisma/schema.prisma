@@ -37,3 +37,19 @@ model SleepRecord {
   /// 记录创建时间
   createdAt   DateTime  @default(now())
 }
+
+/// 宝宝照片（成长相册）
+model PhotoRecord {
+  /// 主键，cuid
+  id        String   @id @default(cuid())
+  /// 缩略图 data URL（网格展示，最长边约 320px 的 JPEG）
+  thumb     String
+  /// 大图 data URL（查看大图，最长边 1280px 的 JPEG）
+  data      String
+  /// 备注，可为空
+  caption   String?
+  /// 拍摄/上传时间
+  takenAt   DateTime @default(now())
+  /// 记录创建时间
+  createdAt DateTime @default(now())
+}
